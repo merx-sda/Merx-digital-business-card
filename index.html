@@ -1998,6 +1998,7 @@ return __EXPORT_QRCode;
 <script>
 /* ============================================================
    MERX DIGITAL BUSINESS CARD — offline single-file build
+   Last saved: 2026-07-11
    Concierge model: edit CONFIG below to re-skin for a new client.
    Two placeholders you must set before going live:
      - CONFIG.formspreeEndpoint  (real Formspree form ID)
@@ -2859,4 +2860,286 @@ function openPinGate(){
   setTimeout(()=>document.getElementById("pinInput").focus(), 50);
 }
 // PIN must always be wrapped in stars (e.g. "*2412*") on the lock screen — plain digits
-// alone are rejecte
+// alone are rejected, to keep casual visitors from stumbling into the leads screen.
+
+const STORAGE_PIN = "merx_card_pin";
+
+function getEffectivePin(){
+  return localStorage.getItem(STORAGE_PIN) || CONFIG.exportPin;
+}
+
+function checkPin(){
+  const input = document.getElementById("pinInput");
+  const raw = input.value.trim();
+  const expected = "*" + getEffectivePin() + "*";
+  if (raw !== expected){
+    document.getElementById("pinError").textContent = "Incorrect PIN — remember to wrap it in stars, e.g. *0943*.";
+    input.value = "";
+    input.focus();
+    return;
+  }
+  document.getElementById("pinError").textContent = "";
+  enterAdminArea();
+}
+
+function enterAdminArea(){
+  adminUnlocked = true;
+  showScreen("leads");
+  showAdminTab("leads");
+  resetAdminIdleTimer();
+}
+
+function resetAdminIdleTimer(){
+  if (adminIdleTimer) clearTimeout(adminIdleTimer);
+  adminIdleTimer = setTimeout(() => { lockAdmin(); }, ADMIN_IDLE_LIMIT_MS);
+}
+
+function lockAdmin(){
+  adminUnlocked = false;
+  if (adminIdleTimer){ clearTimeout(adminIdleTimer); adminIdleTimer = null; }
+  showScreen("main");
+}
+
+document.addEventListener("click", () => { if (adminUnlocked) resetAdminIdleTimer(); });
+document.addEventListener("keydown", () => { if (adminUnlocked) resetAdminIdleTimer(); });
+
+/* ---------------- admin tabs ---------------- */
+const ADMIN_TABS = ["leads", "buttons", "skin", "info"];
+function showAdminTab(name){
+  ADMIN_TABS.forEach(t => {
+    const cap = t.charAt(0).toUpperCase() + t.slice(1);
+    document.getElementById("adminPane" + cap).style.display = (t === name) ? "" : "none";
+    document.getElementById("tab" + cap + "Btn").classList.toggle("active", t === name);
+  });
+  if (name === "leads") renderLeadsList();
+  if (name === "buttons") { adminButtonsDraft = JSON.parse(JSON.stringify(buttonsConfig)); renderButtonToggles(); }
+  if (name === "info") renderAdminInfoFields();
+}
+
+/* ---------------- shared helpers ---------------- */
+function escapeHtml(str){
+  return String(str == null ? "" : str).replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+}
+
+let toastTimer = null;
+function showToast(msg){
+  const el = document.getElementById("toast");
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add("show");
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 2200);
+}
+
+function downloadTextFile(filename, text, mime){
+  const blob = new Blob([text], { type: mime || "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* ---------------- leads list / CSV export ---------------- */
+function renderLeadsList(){
+  const list = document.getElementById("leadsList");
+  const leads = getLeads();
+  if (!leads.length){
+    list.innerHTML = '<div class="empty-note">No leads saved on this device yet.</div>';
+    return;
+  }
+  list.innerHTML = leads.map(lead => {
+    const when = new Date(lead.timestamp).toLocaleString();
+    const rows = [
+      lead.email ? `<div class="lead-row">${escapeHtml(lead.email)}</div>` : "",
+      lead.phone ? `<div class="lead-row">${escapeHtml(lead.phone)}</div>` : "",
+      lead.company ? `<div class="lead-row">${escapeHtml(lead.company)}</div>` : "",
+      lead.title ? `<div class="lead-row">${escapeHtml(lead.title)}</div>` : "",
+      lead.service ? `<div class="lead-row">Interested in: ${escapeHtml(lead.service)}</div>` : "",
+      lead.metAt ? `<div class="lead-row">Met at: ${escapeHtml(lead.metAt)}</div>` : ""
+    ].join("");
+    const thumbs = (lead.cardPhoto || lead.personPhoto)
+      ? `<div class="lead-thumbs">${lead.cardPhoto ? `<img src="${lead.cardPhoto}" alt="Business card">` : ""}${lead.personPhoto ? `<img src="${lead.personPhoto}" alt="Contact photo">` : ""}</div>`
+      : "";
+    return `<div class="lead-card"><div class="lead-top"><span class="lead-name">${escapeHtml(lead.name || "Unknown")}</span><span class="lead-time">${escapeHtml(when)}</span></div>${rows}${thumbs}</div>`;
+  }).join("");
+}
+
+function csvField(val){
+  const s = String(val == null ? "" : val);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+}
+
+function exportCSV(){
+  const leads = getLeads();
+  const cols = ["timestamp","name","email","phone","company","title","service","metAt"];
+  const rows = [cols.join(",")].concat(leads.map(l => cols.map(c => csvField(l[c])).join(",")));
+  downloadTextFile("merx-leads-" + new Date().toISOString().slice(0,10) + ".csv", rows.join("\r\n"), "text/csv");
+}
+
+/* ---------------- buttons admin tab ---------------- */
+let adminButtonsDraft = {};
+
+function renderButtonToggles(){
+  const list = document.getElementById("buttonTogglesList");
+  list.innerHTML = "";
+  BUTTON_DEFS.forEach(def => {
+    if (!adminButtonsDraft[def.key]) adminButtonsDraft[def.key] = { enabled:false, url:"" };
+    const cfg = adminButtonsDraft[def.key];
+    const row = document.createElement("div");
+    row.className = "toggle-row";
+    let bodyHtml = "";
+    if (def.kind === "contact"){
+      bodyHtml = `<div class="toggle-row-body" style="display:${cfg.enabled ? "" : "none"};">
+        <input type="text" placeholder="Zelle email or phone" value="${escapeHtml(cfg.contact || "")}" data-field="contact">
+      </div>`;
+    } else if (def.kind === "event"){
+      bodyHtml = `<div class="toggle-row-body" style="display:${cfg.enabled ? "" : "none"};">
+        <select data-field="type">
+          <option value="link" ${cfg.type === "link" || !cfg.type ? "selected" : ""}>Link</option>
+          <option value="image" ${cfg.type === "image" ? "selected" : ""}>Image</option>
+          <option value="pdf" ${cfg.type === "pdf" ? "selected" : ""}>PDF</option>
+        </select>
+        <input type="text" placeholder="URL or filename" value="${escapeHtml(cfg.url || "")}" data-field="url">
+      </div>`;
+    } else {
+      bodyHtml = `<div class="toggle-row-body" style="display:${cfg.enabled ? "" : "none"};">
+        <input type="text" placeholder="URL" value="${escapeHtml(cfg.url || "")}" data-field="url">
+      </div>`;
+    }
+    row.innerHTML = `<div class="toggle-row-head">
+        <span class="toggle-row-label">${escapeHtml(def.label)}</span>
+        <label class="switch"><input type="checkbox" ${cfg.enabled ? "checked" : ""}><span class="switch-track"></span></label>
+      </div>${bodyHtml}`;
+    const checkbox = row.querySelector('input[type="checkbox"]');
+    checkbox.addEventListener("change", () => {
+      cfg.enabled = checkbox.checked;
+      const bodyEl = row.querySelector(".toggle-row-body");
+      if (bodyEl) bodyEl.style.display = cfg.enabled ? "" : "none";
+    });
+    row.querySelectorAll("[data-field]").forEach(el => {
+      const sync = () => { cfg[el.dataset.field] = el.value; };
+      el.addEventListener("input", sync);
+      el.addEventListener("change", sync);
+    });
+    list.appendChild(row);
+  });
+  renderFeaturedButtonSelect();
+}
+
+function renderFeaturedButtonSelect(){
+  const sel = document.getElementById("featuredButtonSelect");
+  const current = adminButtonsDraft.featuredButton || "";
+  sel.innerHTML = BUTTON_DEFS.filter(d => d.kind !== "contact").map(d =>
+    `<option value="${d.key}" ${d.key === current ? "selected" : ""}>${escapeHtml(d.label)}</option>`
+  ).join("");
+  sel.value = current;
+}
+
+function updateFeaturedButton(value){
+  adminButtonsDraft.featuredButton = value;
+}
+
+function downloadButtonsConfig(){
+  downloadTextFile("buttons-config.json", JSON.stringify(adminButtonsDraft, null, 2), "application/json");
+  showToast("buttons-config.json downloaded");
+}
+
+/* ---------------- info admin tab ---------------- */
+let adminProfileDraft = {};
+
+function renderAdminInfoFields(){
+  adminProfileDraft = {
+    fullName: CONFIG.fullName || "",
+    title: CONFIG.title || "",
+    company: CONFIG.company || "",
+    phoneDigits: CONFIG.phoneDigits || "",
+    email: CONFIG.email || "",
+    linkedin: CONFIG.linkedin || "",
+    aboutMe: CONFIG.aboutMe || "",
+    headshot: CONFIG.headshot || ""
+  };
+  document.getElementById("infoFullName").value = adminProfileDraft.fullName;
+  document.getElementById("infoTitle").value = adminProfileDraft.title;
+  document.getElementById("infoCompany").value = adminProfileDraft.company;
+  document.getElementById("infoPhone").value = adminProfileDraft.phoneDigits;
+  document.getElementById("infoEmail").value = adminProfileDraft.email;
+  document.getElementById("infoAboutMe").value = adminProfileDraft.aboutMe;
+  const preview = document.getElementById("infoPhotoPreview");
+  if (adminProfileDraft.headshot){
+    preview.src = adminProfileDraft.headshot;
+    preview.classList.add("show");
+  } else {
+    preview.classList.remove("show");
+  }
+}
+
+function updateInfoField(key, value){
+  adminProfileDraft[key] = value;
+}
+
+async function handleInfoPhotoUpload(file){
+  const dataUrl = await readFileAsDataURL(file);
+  if (!dataUrl) return;
+  adminProfileDraft.headshot = dataUrl;
+  const preview = document.getElementById("infoPhotoPreview");
+  preview.src = dataUrl;
+  preview.classList.add("show");
+}
+
+function downloadProfileConfig(){
+  downloadTextFile("profile-config.json", JSON.stringify(adminProfileDraft, null, 2), "application/json");
+  showToast("profile-config.json downloaded");
+}
+
+/* ---------------- PIN change ---------------- */
+function changePin(){
+  const cur = document.getElementById("pinCurrentInput").value.trim();
+  const next = document.getElementById("pinNewInput").value.trim();
+  const confirmVal = document.getElementById("pinConfirmInput").value.trim();
+  const errEl = document.getElementById("pinChangeError");
+  if (cur !== getEffectivePin()){
+    errEl.textContent = "Current PIN is incorrect.";
+    return;
+  }
+  if (!/^\d{4}$/.test(next)){
+    errEl.textContent = "New PIN must be exactly 4 digits.";
+    return;
+  }
+  if (next !== confirmVal){
+    errEl.textContent = "New PIN and confirmation don't match.";
+    return;
+  }
+  localStorage.setItem(STORAGE_PIN, next);
+  errEl.textContent = "PIN updated. Remember: unlock with it wrapped in stars.";
+  document.getElementById("pinCurrentInput").value = "";
+  document.getElementById("pinNewInput").value = "";
+  document.getElementById("pinConfirmInput").value = "";
+}
+
+function resetPin(){
+  localStorage.removeItem(STORAGE_PIN);
+  document.getElementById("pinChangeError").textContent = "PIN reset to the default.";
+}
+
+/* ---------------- startup ---------------- */
+function initCard(){
+  applyBackground(localStorage.getItem(STORAGE_BG) || COLORS[0].id);
+  applyButtonColor(localStorage.getItem(STORAGE_BTN) || COLORS[0].id);
+  applyFont(localStorage.getItem(STORAGE_FONT) || FONTS[0].id);
+  applyTitleFont(localStorage.getItem(STORAGE_TITLE_FONT) || TITLE_FONTS[0].id);
+
+  loadProfileConfig();
+  loadButtonsConfig();
+  initAnalytics();
+
+  const phoneField = document.getElementById("leadPhone");
+  if (phoneField) phoneField.addEventListener("input", formatPhoneInput);
+
+  const leadForm = document.getElementById("leadForm");
+  if (leadForm) leadForm.addEventListener("submit", handleFormSubmit);
+}
+initCard();
+</script>
+</body>
+</html>
