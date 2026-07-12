@@ -226,7 +226,7 @@ a{color:inherit;text-decoration:none;}
 
 .contact-item svg{ width:18px; height:18px; fill:var(--body-text); }
 
-.placeholder-row{ display:flex; justify-content:center; gap:12px; margin:16px 0 4px; opacity:.9; }
+.placeholder-row{ display:flex; flex-direction:column; margin:14px 0 4px; }
 .placeholder-item{
   display:flex; flex-direction:column; align-items:center; gap:5px;
   padding:10px 14px; border-radius:12px;
@@ -474,7 +474,6 @@ a{color:inherit;text-decoration:none;}
         
 
         <div class="placeholder-row" id="placeholderRow"></div>
-        <div class="social-row" id="socialRow"></div>
 
         <div class="about-me-box">
           <h3>About Me</h3>
@@ -657,6 +656,11 @@ a{color:inherit;text-decoration:none;}
           <label for="featuredButtonSelect">Featured button (shows next to Email, up top)</label>
           <select id="featuredButtonSelect" onchange="updateFeaturedButton(this.value)"></select>
           <div class="hint">If Gift for you is toggled on below, it always takes this spot instead — no matter what's picked here.</div>
+        </div>
+        <div class="info-field">
+          <label for="digitalCardLinkInput">Digital business card link</label>
+          <input type="text" id="digitalCardLinkInput" placeholder="https://yourname.github.io/your-repo/" oninput="updateDigitalCardLink(this.value)">
+          <div class="hint">Always saved onto everyone's contact card when they tap Save contact — separate from Company website and Portfolio below. <a href="javascript:void(0)" onclick="useCurrentPageAsCardLink()">Use this page's link</a></div>
         </div>
         <div class="toggle-list" id="buttonTogglesList"></div>
         <hr class="hr">
@@ -2070,7 +2074,8 @@ const CONFIG = {
 // ---- Optional buttons registry: drives both the live rendering and the admin panel ----
 const BUTTON_DEFS = [
   { key: "giftForYou",     label: "Gift for you",   kind: "event",   icon: "gift" },
-  { key: "website",        label: "Website",        kind: "url",     icon: "website" },
+  { key: "companyWebsite", label: "Company website", kind: "url",    icon: "website" },
+  { key: "website",        label: "Portfolio",      kind: "url",     icon: "website" },
   { key: "bookACall",      label: "Book a call",    kind: "url",     icon: "calendar" },
   { key: "linkedin",       label: "LinkedIn",       kind: "url",     icon: "linkedin" },
   { key: "nextEvent",      label: "Next event",     kind: "event",   icon: "event" },
@@ -2098,8 +2103,7 @@ async function loadButtonsConfig(){
     buttonsConfig = {};
   }
   renderFeaturedButton();
-  renderPlaceholderRow();
-  renderSocialRow();
+  renderExtraButtons();
 }
 
 function renderFeaturedButton(){
@@ -2460,7 +2464,10 @@ function buildVCard(includePhoto){
   if (CONFIG.email) lines.push(`EMAIL:${CONFIG.email}`);
   const liUrl = buttonsConfig.linkedin && buttonsConfig.linkedin.enabled && buttonsConfig.linkedin.url;
   if (liUrl) lines.push(`URL:${liUrl}`);
-  const siteUrl = buttonsConfig.website && buttonsConfig.website.enabled && buttonsConfig.website.url;
+  // Saved contacts always get the dedicated "digital business card link" field here —
+  // separate from Company website (logo) and Portfolio, so it never depends on those
+  // toggles being on or off.
+  const siteUrl = buttonsConfig.digitalCardLink;
   if (siteUrl) lines.push(`URL;TYPE=WORK:${siteUrl}`);
   if (CONFIG.vcardNote) lines.push(foldVCardLine(`NOTE:${CONFIG.vcardNote}`));
   if (includePhoto && CONFIG.includePhotoInVCard && CONFIG.headshot){
@@ -2495,13 +2502,13 @@ async function shareVCard(){
 }
 
 // "Press to Share" on the QR page — opens the native share sheet (text, email, AirDrop, etc.)
-// with a link back to the live digital card. Falls back to copying the link if there's no
-// share sheet, and falls back to sharing the vCard itself if the card isn't hosted yet
-// (no website link configured) or the clipboard is unavailable too.
+// with a link back to the live digital card. Uses the page's own current address, so
+// there's nothing to configure and it's always correct. Falls back to copying the link if
+// there's no share sheet, and falls back to sharing the vCard itself if the clipboard is
+// unavailable too.
 async function shareCardLink(){
   trackEvent("card_link_share_open");
-  const url = buttonsConfig.website && buttonsConfig.website.enabled && buttonsConfig.website.url;
-  if (!url){ await shareVCard(); return; }
+  const url = window.location.origin + window.location.pathname;
   if (navigator.share){
     try{
       await navigator.share({ title: CONFIG.fullName, text: `${CONFIG.fullName} — ${CONFIG.company}`, url });
@@ -2574,24 +2581,51 @@ const ICONS = {
 
 function iconSVG(key){ return ICONS[key] || ""; }
 
-function renderPlaceholderRow(){
+// Every optional button (Website, Book a call, Next event, and every social/payment
+// link) renders the same way: a full-width row, icon + label, stacked one under the
+// other — same visual language as the Save contact / Share info buttons above. New
+// ones just add another row and push About Me down; nothing needs a fixed amount of
+// space reserved for it.
+function renderExtraButtons(){
   const row = document.getElementById("placeholderRow");
   const items = [];
   const featured = buttonsConfig.featuredButton;
-  const web = buttonsConfig.website;
-  if (web && web.enabled && web.url && featured !== "website"){
-    items.push(`<a class="placeholder-item" href="${escapeHtml(web.url)}" target="_blank" rel="noopener" onclick="trackEvent('website')">${iconSVG("website")}<span>Website</span></a>`);
-  }
-  const book = buttonsConfig.bookACall;
-  if (book && book.enabled && book.url && featured !== "bookACall"){
-    items.push(`<a class="placeholder-item" href="${escapeHtml(book.url)}" target="_blank" rel="noopener" onclick="trackEvent('book_a_call')">${iconSVG("calendar")}<span>Book a call</span></a>`);
-  }
-  const evt = buttonsConfig.nextEvent;
-  if (evt && evt.enabled){
-    items.push(`<a class="placeholder-item" href="javascript:void(0)" onclick="trackEvent('next_event'); openNextEvent()">${iconSVG("event")}<span>Next event</span></a>`);
-  }
+  BUTTON_DEFS.forEach(def => {
+    if (def.key === "giftForYou") return; // always lives in the featured slot instead
+    if (def.key === "companyWebsite") return; // lives on the logo, not in this stack
+    if (def.key === featured) return; // already shown in the top row
+    const c = buttonsConfig[def.key];
+    if (!c || !c.enabled) return;
+    if (def.kind === "contact"){
+      if (!c.contact) return;
+      items.push(`<a class="btn secondary" href="javascript:void(0)" onclick="payViaZelle()">${iconSVG(def.icon)}<span>${escapeHtml(def.label)}</span></a>`);
+    } else if (def.kind === "event"){
+      if (!c.url) return;
+      items.push(`<a class="btn secondary" href="javascript:void(0)" onclick="trackEvent('next_event'); openNextEvent()">${iconSVG(def.icon)}<span>${escapeHtml(def.label)}</span></a>`);
+    } else {
+      if (!c.url) return;
+      items.push(`<a class="btn secondary" href="${escapeHtml(c.url)}" target="_blank" rel="noopener" onclick="trackEvent('extra_${def.key}')">${iconSVG(def.icon)}<span>${escapeHtml(def.label)}</span></a>`);
+    }
+  });
   row.style.display = items.length ? "flex" : "none";
   row.innerHTML = items.join("");
+  applyLogoLink();
+}
+
+// Turns the logo badge (top-right, on every screen) into a tappable link to the company
+// website when that toggle is on — otherwise it's decorative, same as before.
+function applyLogoLink(){
+  const cfg = buttonsConfig.companyWebsite;
+  const url = cfg && cfg.enabled && cfg.url;
+  document.querySelectorAll(".brand-badge").forEach(el => {
+    el.onclick = null;
+    if (url){
+      el.style.cursor = "pointer";
+      el.onclick = () => { trackEvent("logo_company_website"); window.open(url, "_blank", "noopener"); };
+    } else {
+      el.style.cursor = "";
+    }
+  });
 }
 
 async function openNextEvent(){
@@ -2700,26 +2734,6 @@ async function textAboutDeal(){
   const body = link ? `${base} ${link}` : base;
   const sep = isIOSDevice() ? "&" : "?";
   window.location.href = `sms:${CONFIG.phoneDigits}${sep}body=${encodeURIComponent(body)}`;
-}
-
-const SOCIAL_KEYS = ["linkedin","instagram","facebook","tiktok","youtube","x","yelp","googleReviews","whatsapp","venmo","cashapp"];
-
-function renderSocialRow(){
-  const row = document.getElementById("socialRow");
-  const items = [];
-  const featured = buttonsConfig.featuredButton;
-  SOCIAL_KEYS.forEach(key => {
-    const c = buttonsConfig[key];
-    if (c && c.enabled && c.url && featured !== key){
-      items.push(`<a class="social-item" href="${escapeHtml(c.url)}" target="_blank" rel="noopener" onclick="trackEvent('social_${key}')">${iconSVG(key)}</a>`);
-    }
-  });
-  const zelle = buttonsConfig.zelle;
-  if (zelle && zelle.enabled && zelle.contact){
-    items.push(`<a class="social-item" href="javascript:void(0)" onclick="payViaZelle()" title="Pay via Zelle">${iconSVG("zelle")}</a>`);
-  }
-  row.style.display = items.length ? "flex" : "none";
-  row.innerHTML = items.join("");
 }
 
 function payViaZelle(){
@@ -3188,6 +3202,8 @@ function compressImageFile(file, maxDim, quality){
 let adminButtonsDraft = {};
 
 function renderButtonToggles(){
+  const linkInput = document.getElementById("digitalCardLinkInput");
+  if (linkInput) linkInput.value = adminButtonsDraft.digitalCardLink || "";
   const list = document.getElementById("buttonTogglesList");
   list.innerHTML = "";
   BUTTON_DEFS.forEach(def => {
@@ -3216,8 +3232,12 @@ function renderButtonToggles(){
         <input type="text" placeholder="Or paste a URL" value="${isData ? "" : escapeHtml(cfg.url || "")}" data-field="url">
       </div>`;
     } else {
+      const extraHint = def.key === "companyWebsite"
+        ? `<div class="hint">Turns the logo (top-right, every screen) into a tappable link to this site.</div>`
+        : "";
       bodyHtml = `<div class="toggle-row-body" style="display:${cfg.enabled ? "" : "none"};">
         <input type="text" placeholder="URL" value="${escapeHtml(cfg.url || "")}" data-field="url">
+        ${extraHint}
       </div>`;
     }
     row.innerHTML = `<div class="toggle-row-head">
@@ -3273,7 +3293,7 @@ function renderButtonToggles(){
 function renderFeaturedButtonSelect(){
   const sel = document.getElementById("featuredButtonSelect");
   const current = adminButtonsDraft.featuredButton || "";
-  sel.innerHTML = BUTTON_DEFS.filter(d => d.kind !== "contact").map(d =>
+  sel.innerHTML = BUTTON_DEFS.filter(d => d.kind !== "contact" && d.key !== "companyWebsite").map(d =>
     `<option value="${d.key}" ${d.key === current ? "selected" : ""}>${escapeHtml(d.label)}</option>`
   ).join("");
   sel.value = current;
@@ -3281,6 +3301,18 @@ function renderFeaturedButtonSelect(){
 
 function updateFeaturedButton(value){
   adminButtonsDraft.featuredButton = value;
+}
+
+function updateDigitalCardLink(value){
+  adminButtonsDraft.digitalCardLink = value;
+}
+
+function useCurrentPageAsCardLink(){
+  const url = window.location.origin + window.location.pathname;
+  adminButtonsDraft.digitalCardLink = url;
+  const linkInput = document.getElementById("digitalCardLinkInput");
+  if (linkInput) linkInput.value = url;
+  showToast("Filled in — remember to Publish");
 }
 
 function downloadButtonsConfig(){
@@ -3298,7 +3330,7 @@ async function publishButtonsConfig(){
   try{
     await publishFileToGitHub("buttons-config.json", JSON.stringify(adminButtonsDraft, null, 2), "Update buttons-config.json from admin panel");
     buttonsConfig = JSON.parse(JSON.stringify(adminButtonsDraft));
-    renderFeaturedButton(); renderPlaceholderRow(); renderSocialRow();
+    renderFeaturedButton(); renderExtraButtons();
     showToast("Published! Live on the site in a minute or two.");
   }catch(err){
     console.error(err);
