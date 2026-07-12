@@ -418,6 +418,11 @@ a{color:inherit;text-decoration:none;}
       rgba(var(--bg-rgb), .93) 140px,
       rgba(var(--bg-rgb), .93) 100%);
   }
+  /* Lifts every other direct child of .card above the fixed color backdrop above —
+     needed on screens that don't have their own has-photo/pin-overlay stacking rules
+     (PIN gate, Leads/admin, Next Event, Gift for You), or their content would render
+     underneath pin-bg and appear to vanish behind the color fill. */
+  .card > .pin-bg ~ *{ position:relative; z-index:1; }
   :root{ --seam-opacity: .93; }
 }
 
@@ -608,6 +613,7 @@ a{color:inherit;text-decoration:none;}
   <!-- ===================== PIN GATE ===================== -->
   <section id="screen-pin" class="screen">
     <div class="card">
+      <div class="pin-bg"></div>
       <div class="card-topbar">
         <button class="icon-btn" onclick="showScreen('main')" title="Back" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 4 6 12l9 8 1.4-1.4L9 12l7.4-6.6L15 4z"/></svg></button>
         <span></span>
@@ -624,6 +630,7 @@ a{color:inherit;text-decoration:none;}
   <!-- ===================== LEADS REVIEW ===================== -->
   <section id="screen-leads" class="screen">
     <div class="card">
+      <div class="pin-bg"></div>
       <div class="card-topbar">
         <button class="icon-btn" onclick="showScreen('main')" title="Back" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 4 6 12l9 8 1.4-1.4L9 12l7.4-6.6L15 4z"/></svg></button>
         <span></span>
@@ -765,6 +772,7 @@ a{color:inherit;text-decoration:none;}
   <!-- ===================== NEXT EVENT ===================== -->
   <section id="screen-event" class="screen">
     <div class="card">
+      <div class="pin-bg"></div>
       <div class="card-topbar">
         <button class="icon-btn" onclick="showScreen('main')" title="Back" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 4 6 12l9 8 1.4-1.4L9 12l7.4-6.6L15 4z"/></svg></button>
         <span></span>
@@ -777,6 +785,7 @@ a{color:inherit;text-decoration:none;}
   <!-- ===================== GIFT FOR YOU ===================== -->
   <section id="screen-gift" class="screen">
     <div class="card">
+      <div class="pin-bg"></div>
       <div class="card-topbar">
         <button class="icon-btn" onclick="showScreen('main')" title="Back" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 4 6 12l9 8 1.4-1.4L9 12l7.4-6.6L15 4z"/></svg></button>
         <span></span>
@@ -3021,12 +3030,17 @@ function isGitHubConnected(){
 
 function connectGitHub(){
   const owner = document.getElementById("ghOwnerInput").value.trim();
-  const repo = document.getElementById("ghRepoInput").value.trim();
+  let repo = document.getElementById("ghRepoInput").value.trim();
   const token = document.getElementById("ghTokenInput").value.trim();
   if (!owner || !repo || !token){
     showToast("Fill in username, repo, and token first");
     return;
   }
+  // Forgiving of pasting "owner/repo" or a full github.com URL into the repo field —
+  // only the last path segment is actually the repo name.
+  repo = repo.replace(/^https?:\/\/(www\.)?github\.com\//i, "").replace(/\.git$/i, "");
+  if (repo.includes("/")) repo = repo.split("/").filter(Boolean).pop();
+  document.getElementById("ghRepoInput").value = repo;
   localStorage.setItem(GH_KEY_OWNER, owner);
   localStorage.setItem(GH_KEY_REPO, repo);
   localStorage.setItem(GH_KEY_TOKEN, token);
@@ -3120,7 +3134,7 @@ async function publishFileToGitHub(path, contentString, commitMessage){
   };
   let sha;
   try{
-    const getRes = await fetch(apiUrl + "?ref=" + encodeURIComponent(cfg.branch), { headers });
+    const getRes = await fetch(apiUrl + "?ref=" + encodeURIComponent(cfg.branch) + "&_=" + Date.now(), { headers, cache: "no-store" });
     if (getRes.ok){
       const data = await getRes.json();
       sha = data.sha;
@@ -3399,8 +3413,7 @@ function initCard(){
   applyFont(localStorage.getItem(STORAGE_FONT) || FONTS[0].id);
   applyTitleFont(localStorage.getItem(STORAGE_TITLE_FONT) || TITLE_FONTS[0].id);
 
-  const monogramEl = document.getElementById("monogramEl");
-  if (monogramEl) monogramEl.src = CONFIG.monogramIcon;
+  document.querySelectorAll("#monogramEl, #qrMonogramEl, #shareMonogramEl").forEach(el => { el.src = CONFIG.monogramIcon; });
   const qrLogoEl = document.getElementById("qrLogoEl");
   if (qrLogoEl) qrLogoEl.src = CONFIG.qrLogo;
 
