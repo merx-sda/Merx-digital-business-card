@@ -255,6 +255,22 @@ a{color:inherit;text-decoration:none;}
 [data-accent-match="true"] .social-item svg{ fill:var(--accent-border); }
 [data-accent-match="true"] .btn.secondary{ color:var(--accent-border); }
 
+/* Gift for you — solid/metal treatment so it stands out from the plain Call/Text/Email tiles */
+.contact-item.gift-standout{
+  background:
+    linear-gradient(to bottom, rgba(255,255,255,.16) 0%, rgba(255,255,255,.24) 10%, rgba(255,255,255,0) 26%),
+    var(--accent-bg, var(--accent));
+  border:2px solid var(--accent-border, var(--accent));
+  color:var(--btn-text);
+  box-shadow:0 2px 0 rgba(0,0,0,.25), 0 8px 14px -6px rgba(0,0,0,.45);
+  font-weight:700;
+  transition:transform .12s ease;
+}
+.contact-item.gift-standout:active{ transform:translateY(1px); box-shadow:0 1px 0 rgba(0,0,0,.25), 0 5px 8px -4px rgba(0,0,0,.4); }
+.contact-item.gift-standout svg{ fill:var(--btn-text); }
+[data-accent-match="true"] .contact-item.gift-standout{ border-color:var(--accent-border); color:var(--btn-text); }
+[data-accent-match="true"] .contact-item.gift-standout svg{ fill:var(--btn-text); }
+
 /* ===================== FORM ===================== */
 .form-wrap{ margin-top:10px; display:none; }
 .form-wrap.open{ display:block; }
@@ -2058,6 +2074,7 @@ const CONFIG = {
 
   // Placeholders — swap before going live:
   formspreeEndpoint: "https://formspree.io/f/mjgnbekg",
+  sheetsEndpoint: "https://script.google.com/macros/s/AKfycbzJQBEEA_uSz4g-7J70WCHyOPyOLS_WIUqUHhvDcNnZB1jVb0jHKaVnPrqyBJQPB3Sd/exec",
   exportPin: "0943",
 
   // Visible but not wired yet (icon-styled, look active). Fill in "website"
@@ -2112,7 +2129,7 @@ function renderFeaturedButton(){
   // in the Featured button dropdown below, no matter what.
   const gift = buttonsConfig.giftForYou;
   if (gift && gift.enabled && gift.url){
-    slot.outerHTML = `<a class="contact-item" id="featuredContactSlot" href="javascript:void(0)" onclick="trackEvent('featured_giftForYou'); openGiftForYou()">${iconSVG("gift")}<span>Gift for you</span></a>`;
+    slot.outerHTML = `<a class="contact-item gift-standout" id="featuredContactSlot" href="javascript:void(0)" onclick="trackEvent('featured_giftForYou'); openGiftForYou()">${iconSVG("gift")}<span>Gift for you</span></a>`;
     return;
   }
   const key = buttonsConfig.featuredButton;
@@ -2759,6 +2776,19 @@ function readFileAsDataURL(file){
   });
 }
 
+// Best-effort log to the Google Sheet backend — text fields only, no photos (those still
+// arrive as Formspree email attachments). Fire-and-forget, same pattern as Formspree: the
+// local save + Formspree send above already succeeded either way, so a failure here is
+// never allowed to block or error out the visitor's experience.
+function sendToSheets(fields){
+  if (!CONFIG.sheetsEndpoint) return;
+  try{
+    const fd = new FormData();
+    Object.keys(fields).forEach(k => fd.append(k, fields[k] == null ? "" : fields[k]));
+    fetch(CONFIG.sheetsEndpoint, { method:"POST", body:fd }).catch(()=>{});
+  }catch(err){ /* ignore */ }
+}
+
 async function handleFormSubmit(e){
   e.preventDefault();
   const form = e.target;
@@ -2812,6 +2842,7 @@ async function handleFormSubmit(e){
     if (personPhotoFile) fd.append("personPhoto", personPhotoFile);
     fetch(CONFIG.formspreeEndpoint, { method:"POST", body:fd, headers:{ "Accept":"application/json" } }).catch(()=>{});
   }catch(err){ /* ignore — local save already happened */ }
+  sendToSheets({ name, email, phone: phoneDigits, company, title, service, metAt, source:"Lead form", visitorId });
 
   form.reset();
   document.getElementById("leadForm").style.display = "none";
@@ -2879,6 +2910,7 @@ async function sendCustomerVCard(){
       fd.append("vcard", new File([vcard], (name || "contact").replace(/\s+/g,"_") + ".vcf", { type:"text/vcard" }));
       fetch(CONFIG.formspreeEndpoint, { method:"POST", body:fd, headers:{ "Accept":"application/json" } }).catch(()=>{});
     }catch(err){ /* ignore — local save already happened */ }
+    sendToSheets({ name, email, phone: phoneDigits, metAt:"Sent vCard", source:"Sent vCard", visitorId });
 
     const leadForm = document.getElementById("leadForm");
     if (leadForm) leadForm.style.display = "none";
