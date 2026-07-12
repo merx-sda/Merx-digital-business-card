@@ -1,0 +1,19 @@
+{
+  "featuredButton": "linkedin",
+  "giftForYou": { "enabled": false, "type": "link", "url": "" },
+  "website": { "enabled": false, "url": "" },
+  "bookACall": { "enabled": false, "url": "" },
+  "linkedin": { "enabled": true, "url": "https://www.linkedin.com/in/lloyd-medina-82051816b" },
+  "nextEvent": { "enabled": false, "type": "link", "url": "" },
+  "instagram": { "enabled": false, "url": "" },
+  "facebook": { "enabled": false, "url": "" },
+  "tiktok": { "enabled": false, "url": "" },
+  "youtube": { "enabled": false, "url": "" },
+  "x": { "enabled": false, "url": "" },
+  "yelp": { "enabled": false, "url": "" },
+  "googleReviews": { "enabled": false, "url": "" },
+  "whatsapp": { "enabled": false, "url": "" },
+  "venmo": { "enabled": false, "url": "" },
+  "cashapp": { "enabled": false, "url": "" },
+  "zelle": { "enabled": false, "contact": "" }
+}
