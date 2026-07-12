@@ -1,7 +1,7 @@
 {
   "featuredButton": "linkedin",
   "giftForYou": { "enabled": false, "type": "link", "url": "" },
-  "website": { "enabled": false, "url": "" },
+  "website": { "enabled": true, "url": "https://merx-sda.github.io/Merx-digital-business-card/" },
   "bookACall": { "enabled": false, "url": "" },
   "linkedin": { "enabled": true, "url": "https://www.linkedin.com/in/lloyd-medina-82051816b" },
   "nextEvent": { "enabled": false, "type": "link", "url": "" },
