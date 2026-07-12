@@ -619,7 +619,7 @@ a{color:inherit;text-decoration:none;}
       </div>
       <div class="pin-box">
         <p style="color:var(--body-text)">Enter PIN to view leads</p>
-        <input id="pinInput" type="password" inputmode="tel" maxlength="10">
+        <input id="pinInput" type="password" inputmode="tel" maxlength="10" autocomplete="off">
         <div class="pin-error" id="pinError"></div>
         <button class="btn" onclick="checkPin()">Unlock</button>
       </div>
@@ -742,7 +742,7 @@ a{color:inherit;text-decoration:none;}
         </div>
         <div class="info-field">
           <label for="ghTokenInput">Personal access token</label>
-          <input type="password" id="ghTokenInput" placeholder="Paste a fine-grained token here">
+          <input type="password" id="ghTokenInput" placeholder="Paste a fine-grained token here" autocomplete="off">
           <div class="hint">Saved only on this device, never uploaded anywhere. Create one at github.com &rarr; Settings &rarr; Developer settings &rarr; Fine-grained tokens, scoped to just this one repo with &quot;Contents: Read and write&quot; access.</div>
         </div>
         <button class="btn" onclick="connectGitHub()">Save connection</button>
@@ -754,15 +754,15 @@ a{color:inherit;text-decoration:none;}
         <p style="font-size:11.5px;opacity:.7;color:var(--body-text);margin:0 0 10px;">Saved only on this device — not uploaded anywhere. You'll still always wrap it in stars to unlock (e.g. <code>*1234*</code>), on this device or any other.</p>
         <div class="info-field">
           <label for="pinCurrentInput">Current PIN</label>
-          <input type="password" inputmode="numeric" id="pinCurrentInput" maxlength="4" placeholder="1234">
+          <input type="password" inputmode="numeric" id="pinCurrentInput" maxlength="4" placeholder="1234" autocomplete="off">
         </div>
         <div class="info-field">
           <label for="pinNewInput">New PIN (4 digits)</label>
-          <input type="password" inputmode="numeric" id="pinNewInput" maxlength="4" placeholder="1234">
+          <input type="password" inputmode="numeric" id="pinNewInput" maxlength="4" placeholder="1234" autocomplete="off">
         </div>
         <div class="info-field">
           <label for="pinConfirmInput">Confirm new PIN</label>
-          <input type="password" inputmode="numeric" id="pinConfirmInput" maxlength="4" placeholder="1234">
+          <input type="password" inputmode="numeric" id="pinConfirmInput" maxlength="4" placeholder="1234" autocomplete="off">
         </div>
         <div class="pin-error" id="pinChangeError"></div>
         <button class="btn" onclick="changePin()">Update PIN</button>
