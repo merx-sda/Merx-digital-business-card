@@ -645,7 +645,7 @@ a{color:inherit;text-decoration:none;}
 
       <div id="adminPaneButtons" style="display:none;">
         <h2 style="font-family:var(--font-heading);color:var(--body-text);margin:0 0 6px;font-size:18px;">Optional buttons</h2>
-        <p style="font-size:11.5px;opacity:.7;color:var(--body-text);margin:0 0 10px;">Toggle a button on, fill in its link (Next Event can also take an image or PDF instead), then download the file and upload it to GitHub as <code>buttons-config.json</code> to go live.</p>
+        <p style="font-size:11.5px;opacity:.7;color:var(--body-text);margin:0 0 10px;">Toggle a button on and fill in its link. Gift for you / Next event can take a photo or PDF straight from your phone instead of a link.</p>
         <div class="info-field">
           <label for="featuredButtonSelect">Featured button (shows next to Email, up top)</label>
           <select id="featuredButtonSelect" onchange="updateFeaturedButton(this.value)"></select>
@@ -653,7 +653,8 @@ a{color:inherit;text-decoration:none;}
         </div>
         <div class="toggle-list" id="buttonTogglesList"></div>
         <hr class="hr">
-        <button class="btn" onclick="downloadButtonsConfig()">Download updated config</button>
+        <button class="btn" onclick="publishButtonsConfig()">Publish to GitHub</button>
+        <button class="btn ghost" onclick="downloadButtonsConfig()">Download instead</button>
       </div>
 
       <div id="adminPaneSkin" style="display:none;">
@@ -683,7 +684,7 @@ a{color:inherit;text-decoration:none;}
 
       <div id="adminPaneInfo" style="display:none;">
         <h2 style="font-family:var(--font-heading);color:var(--body-text);margin:0 0 6px;font-size:18px;">Your info</h2>
-        <p style="font-size:11.5px;opacity:.7;color:var(--body-text);margin:0 0 10px;">Update your name, title, contact info, headshot, or About Me text. Download the file and upload it to GitHub as <code>profile-config.json</code> to go live.</p>
+        <p style="font-size:11.5px;opacity:.7;color:var(--body-text);margin:0 0 10px;">Update your name, title, contact info, headshot, or About Me text, then Publish below to make it live.</p>
         <div class="info-field">
           <label for="infoFullName">Full name</label>
           <input type="text" id="infoFullName" oninput="updateInfoField('fullName', this.value)">
@@ -714,7 +715,27 @@ a{color:inherit;text-decoration:none;}
           <input type="file" id="infoPhoto" accept="image/*" onchange="handleInfoPhotoUpload(this.files[0])">
         </div>
         <hr class="hr">
-        <button class="btn" onclick="downloadProfileConfig()">Download updated info</button>
+        <button class="btn" onclick="publishProfileConfig()">Publish to GitHub</button>
+        <button class="btn ghost" onclick="downloadProfileConfig()">Download instead</button>
+
+        <hr class="hr">
+        <h3 style="font-size:13px;margin:0 0 4px;color:var(--body-text);">Connect to GitHub</h3>
+        <p style="font-size:11.5px;opacity:.7;color:var(--body-text);margin:0 0 10px;" id="githubStatusText">Not connected — Publish buttons will fall back to Download until this is set up.</p>
+        <div class="info-field">
+          <label for="ghOwnerInput">GitHub username</label>
+          <input type="text" id="ghOwnerInput" placeholder="merx-sda">
+        </div>
+        <div class="info-field">
+          <label for="ghRepoInput">Repository name</label>
+          <input type="text" id="ghRepoInput" placeholder="Merx-digital-business-card">
+        </div>
+        <div class="info-field">
+          <label for="ghTokenInput">Personal access token</label>
+          <input type="password" id="ghTokenInput" placeholder="Paste a fine-grained token here">
+          <div class="hint">Saved only on this device, never uploaded anywhere. Create one at github.com &rarr; Settings &rarr; Developer settings &rarr; Fine-grained tokens, scoped to just this one repo with &quot;Contents: Read and write&quot; access.</div>
+        </div>
+        <button class="btn" onclick="connectGitHub()">Save connection</button>
+        <button class="btn ghost" onclick="disconnectGitHub()">Disconnect</button>
 
         <hr class="hr">
         <h3 style="font-size:13px;margin:0 0 4px;color:var(--body-text);">Change your PIN</h3>
@@ -2977,6 +2998,142 @@ function exportCSV(){
   downloadTextFile("merx-leads-" + new Date().toISOString().slice(0,10) + ".csv", rows.join("\r\n"), "text/csv");
 }
 
+/* ---------------- GitHub publish (no-backend "publish" via GitHub Contents API) ---------------- */
+const GH_KEY_OWNER = "merx_gh_owner";
+const GH_KEY_REPO = "merx_gh_repo";
+const GH_KEY_TOKEN = "merx_gh_token";
+const GH_KEY_BRANCH = "merx_gh_branch";
+
+function getGitHubConfig(){
+  return {
+    owner: localStorage.getItem(GH_KEY_OWNER) || "",
+    repo: localStorage.getItem(GH_KEY_REPO) || "",
+    token: localStorage.getItem(GH_KEY_TOKEN) || "",
+    branch: localStorage.getItem(GH_KEY_BRANCH) || "main"
+  };
+}
+
+function isGitHubConnected(){
+  const c = getGitHubConfig();
+  return !!(c.owner && c.repo && c.token);
+}
+
+function connectGitHub(){
+  const owner = document.getElementById("ghOwnerInput").value.trim();
+  const repo = document.getElementById("ghRepoInput").value.trim();
+  const token = document.getElementById("ghTokenInput").value.trim();
+  if (!owner || !repo || !token){
+    showToast("Fill in username, repo, and token first");
+    return;
+  }
+  localStorage.setItem(GH_KEY_OWNER, owner);
+  localStorage.setItem(GH_KEY_REPO, repo);
+  localStorage.setItem(GH_KEY_TOKEN, token);
+  localStorage.setItem(GH_KEY_BRANCH, "main");
+  document.getElementById("ghTokenInput").value = "";
+  updateGitHubStatusText();
+  showToast("Connected — Publish buttons will push straight to GitHub now");
+}
+
+function disconnectGitHub(){
+  localStorage.removeItem(GH_KEY_OWNER);
+  localStorage.removeItem(GH_KEY_REPO);
+  localStorage.removeItem(GH_KEY_TOKEN);
+  localStorage.removeItem(GH_KEY_BRANCH);
+  const ownerEl = document.getElementById("ghOwnerInput");
+  const repoEl = document.getElementById("ghRepoInput");
+  if (ownerEl) ownerEl.value = "";
+  if (repoEl) repoEl.value = "";
+  updateGitHubStatusText();
+  showToast("Disconnected from GitHub");
+}
+
+function updateGitHubStatusText(){
+  const el = document.getElementById("githubStatusText");
+  if (!el) return;
+  const c = getGitHubConfig();
+  if (isGitHubConnected()){
+    el.textContent = `Connected to ${c.owner}/${c.repo} — Publish buttons push straight to GitHub.`;
+  } else {
+    el.textContent = "Not connected — Publish buttons will fall back to Download until this is set up.";
+  }
+  const ownerEl = document.getElementById("ghOwnerInput");
+  const repoEl = document.getElementById("ghRepoInput");
+  if (ownerEl && !ownerEl.value) ownerEl.value = c.owner;
+  if (repoEl && !repoEl.value) repoEl.value = c.repo;
+}
+
+function b64EncodeUnicode(str){
+  return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g,
+    (match, p1) => String.fromCharCode(parseInt(p1, 16))));
+}
+
+// Publishes a single file straight to the GitHub repo via the Contents API — no git, no
+// terminal, works from a phone browser. Note: this API caps a single file's content at
+// 1MB, which is why photos get compressed before this is called, and why large PDFs may
+// still fail (GitHub's error message will say so; fall back to Download + manual upload
+// for anything that big).
+async function publishFileToGitHub(path, contentString, commitMessage){
+  const cfg = getGitHubConfig();
+  if (!cfg.owner || !cfg.repo || !cfg.token) throw new Error("GitHub isn't connected yet.");
+  const apiUrl = `https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/contents/${encodeURIComponent(path)}`;
+  const headers = {
+    "Authorization": "Bearer " + cfg.token,
+    "Accept": "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28"
+  };
+  let sha;
+  try{
+    const getRes = await fetch(apiUrl + "?ref=" + encodeURIComponent(cfg.branch), { headers });
+    if (getRes.ok){
+      const data = await getRes.json();
+      sha = data.sha;
+    }
+  }catch(err){ /* file may not exist yet on the repo — proceed without a sha */ }
+
+  const body = { message: commitMessage, content: b64EncodeUnicode(contentString), branch: cfg.branch };
+  if (sha) body.sha = sha;
+
+  const putRes = await fetch(apiUrl, {
+    method: "PUT",
+    headers: Object.assign({ "Content-Type": "application/json" }, headers),
+    body: JSON.stringify(body)
+  });
+  if (!putRes.ok){
+    let detail = "";
+    try{ detail = (await putRes.json()).message || ""; }catch(err){ /* ignore */ }
+    throw new Error(`GitHub publish failed (${putRes.status}): ${detail || "unknown error"}`);
+  }
+  return putRes.json();
+}
+
+// Downscales + recompresses a photo client-side before it gets embedded as base64, so it
+// reliably fits under GitHub's 1MB-per-file Contents API limit.
+function compressImageFile(file, maxDim, quality){
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim){
+          const scale = maxDim / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = () => resolve(reader.result); // fallback: use the original if it won't decode
+      img.src = reader.result;
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
 /* ---------------- buttons admin tab ---------------- */
 let adminButtonsDraft = {};
 
@@ -2994,13 +3151,19 @@ function renderButtonToggles(){
         <input type="text" placeholder="Zelle email or phone" value="${escapeHtml(cfg.contact || "")}" data-field="contact">
       </div>`;
     } else if (def.kind === "event"){
+      const isData = (cfg.url || "").startsWith("data:");
+      const statusText = isData
+        ? `Attached: ${escapeHtml(cfg.filename || (cfg.type === "pdf" ? "PDF" : "photo"))} — pick another file to replace it`
+        : "Pick a photo or PDF from your phone, or paste a link below instead.";
       bodyHtml = `<div class="toggle-row-body" style="display:${cfg.enabled ? "" : "none"};">
+        <input type="file" accept="image/*,application/pdf" data-role="filepick">
+        <div class="hint" data-role="filestatus">${statusText}</div>
         <select data-field="type">
           <option value="link" ${cfg.type === "link" || !cfg.type ? "selected" : ""}>Link</option>
           <option value="image" ${cfg.type === "image" ? "selected" : ""}>Image</option>
           <option value="pdf" ${cfg.type === "pdf" ? "selected" : ""}>PDF</option>
         </select>
-        <input type="text" placeholder="URL or filename" value="${escapeHtml(cfg.url || "")}" data-field="url">
+        <input type="text" placeholder="Or paste a URL" value="${isData ? "" : escapeHtml(cfg.url || "")}" data-field="url">
       </div>`;
     } else {
       bodyHtml = `<div class="toggle-row-body" style="display:${cfg.enabled ? "" : "none"};">
@@ -3018,10 +3181,40 @@ function renderButtonToggles(){
       if (bodyEl) bodyEl.style.display = cfg.enabled ? "" : "none";
     });
     row.querySelectorAll("[data-field]").forEach(el => {
-      const sync = () => { cfg[el.dataset.field] = el.value; };
+      const sync = () => { cfg[el.dataset.field] = el.value; cfg.filename = ""; };
       el.addEventListener("input", sync);
       el.addEventListener("change", sync);
     });
+    const filePick = row.querySelector('[data-role="filepick"]');
+    if (filePick){
+      filePick.addEventListener("change", async () => {
+        const file = filePick.files[0];
+        if (!file) return;
+        showToast("Attaching " + file.name + "…");
+        let dataUrl, type;
+        if (file.type === "application/pdf"){
+          dataUrl = await readFileAsDataURL(file);
+          type = "pdf";
+          if (dataUrl && dataUrl.length > 1300000){
+            showToast("That PDF is too big to publish directly (1MB limit) — try a smaller file, or use Download + manual GitHub upload instead.");
+          }
+        } else {
+          dataUrl = await compressImageFile(file, 1600, 0.8);
+          type = "image";
+        }
+        if (!dataUrl) return;
+        cfg.url = dataUrl;
+        cfg.type = type;
+        cfg.filename = file.name;
+        const statusEl = row.querySelector('[data-role="filestatus"]');
+        if (statusEl) statusEl.textContent = `Attached: ${file.name} — pick another file to replace it`;
+        const urlInput = row.querySelector('[data-field="url"]');
+        if (urlInput) urlInput.value = "";
+        const typeSelect = row.querySelector('[data-field="type"]');
+        if (typeSelect) typeSelect.value = type;
+        showToast(file.name + " attached — remember to Publish");
+      });
+    }
     list.appendChild(row);
   });
   renderFeaturedButtonSelect();
@@ -3043,6 +3236,24 @@ function updateFeaturedButton(value){
 function downloadButtonsConfig(){
   downloadTextFile("buttons-config.json", JSON.stringify(adminButtonsDraft, null, 2), "application/json");
   showToast("buttons-config.json downloaded");
+}
+
+async function publishButtonsConfig(){
+  if (!isGitHubConnected()){
+    showToast("Not connected to GitHub yet — downloading instead. Set up the connection in the Info tab.");
+    downloadButtonsConfig();
+    return;
+  }
+  showToast("Publishing…");
+  try{
+    await publishFileToGitHub("buttons-config.json", JSON.stringify(adminButtonsDraft, null, 2), "Update buttons-config.json from admin panel");
+    buttonsConfig = JSON.parse(JSON.stringify(adminButtonsDraft));
+    renderFeaturedButton(); renderPlaceholderRow(); renderSocialRow();
+    showToast("Published! Live on the site in a minute or two.");
+  }catch(err){
+    console.error(err);
+    showToast(String(err.message || err));
+  }
 }
 
 /* ---------------- info admin tab ---------------- */
@@ -3072,6 +3283,7 @@ function renderAdminInfoFields(){
   } else {
     preview.classList.remove("show");
   }
+  updateGitHubStatusText();
 }
 
 function updateInfoField(key, value){
@@ -3079,17 +3291,39 @@ function updateInfoField(key, value){
 }
 
 async function handleInfoPhotoUpload(file){
-  const dataUrl = await readFileAsDataURL(file);
+  if (!file) return;
+  showToast("Attaching photo…");
+  const dataUrl = await compressImageFile(file, 900, 0.85);
   if (!dataUrl) return;
   adminProfileDraft.headshot = dataUrl;
   const preview = document.getElementById("infoPhotoPreview");
   preview.src = dataUrl;
   preview.classList.add("show");
+  showToast("Photo attached — remember to Publish");
 }
 
 function downloadProfileConfig(){
   downloadTextFile("profile-config.json", JSON.stringify(adminProfileDraft, null, 2), "application/json");
   showToast("profile-config.json downloaded");
+}
+
+async function publishProfileConfig(){
+  if (!isGitHubConnected()){
+    showToast("Not connected to GitHub yet — downloading instead. Set up the connection below.");
+    downloadProfileConfig();
+    return;
+  }
+  showToast("Publishing…");
+  try{
+    await publishFileToGitHub("profile-config.json", JSON.stringify(adminProfileDraft, null, 2), "Update profile-config.json from admin panel");
+    profileOverrides = JSON.parse(JSON.stringify(adminProfileDraft));
+    applyProfileOverrides();
+    renderProfileFields();
+    showToast("Published! Live on the site in a minute or two.");
+  }catch(err){
+    console.error(err);
+    showToast(String(err.message || err));
+  }
 }
 
 /* ---------------- PIN change ---------------- */
@@ -3128,6 +3362,11 @@ function initCard(){
   applyButtonColor(localStorage.getItem(STORAGE_BTN) || COLORS[0].id);
   applyFont(localStorage.getItem(STORAGE_FONT) || FONTS[0].id);
   applyTitleFont(localStorage.getItem(STORAGE_TITLE_FONT) || TITLE_FONTS[0].id);
+
+  const monogramEl = document.getElementById("monogramEl");
+  if (monogramEl) monogramEl.src = CONFIG.monogramIcon;
+  const qrLogoEl = document.getElementById("qrLogoEl");
+  if (qrLogoEl) qrLogoEl.src = CONFIG.qrLogo;
 
   loadProfileConfig();
   loadButtonsConfig();
