@@ -735,6 +735,7 @@ a{color:inherit;text-decoration:none;}
           <div class="hint">Saved only on this device, never uploaded anywhere. Create one at github.com &rarr; Settings &rarr; Developer settings &rarr; Fine-grained tokens, scoped to just this one repo with &quot;Contents: Read and write&quot; access.</div>
         </div>
         <button class="btn" onclick="connectGitHub()">Save connection</button>
+        <button class="btn ghost" onclick="testGitHubConnection()">Test connection</button>
         <button class="btn ghost" onclick="disconnectGitHub()">Disconnect</button>
 
         <hr class="hr">
@@ -3061,6 +3062,41 @@ function updateGitHubStatusText(){
   const repoEl = document.getElementById("ghRepoInput");
   if (ownerEl && !ownerEl.value) ownerEl.value = c.owner;
   if (repoEl && !repoEl.value) repoEl.value = c.repo;
+}
+
+// Diagnostic button — hits a read-only endpoint so we get a clear, specific reason
+// (bad token vs wrong repo vs no write access) instead of guessing from a failed publish.
+async function testGitHubConnection(){
+  const cfg = getGitHubConfig();
+  if (!cfg.owner || !cfg.repo || !cfg.token){
+    showToast("Fill in and save a connection first");
+    return;
+  }
+  showToast("Testing…");
+  try{
+    const res = await fetch(`https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}`, {
+      headers: {
+        "Authorization": "Bearer " + cfg.token,
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28"
+      }
+    });
+    if (res.status === 200){
+      const data = await res.json();
+      const canPush = data.permissions && data.permissions.push;
+      showToast(`OK — token can see ${data.full_name}. Push access: ${canPush ? "yes" : "NO — fix Contents permission"}.`);
+    } else if (res.status === 404){
+      showToast(`404 — "${cfg.owner}/${cfg.repo}" not found for this token. Check the owner/repo spelling, or the token's repository access.`);
+    } else if (res.status === 401){
+      showToast("401 — bad or expired token. Regenerate it on GitHub and paste the fresh one in.");
+    } else {
+      let body = "";
+      try{ body = (await res.json()).message || ""; }catch(e){}
+      showToast(`Unexpected response (${res.status}): ${body}`);
+    }
+  }catch(err){
+    showToast("Network error testing connection: " + err.message);
+  }
 }
 
 function b64EncodeUnicode(str){
